@@ -185,14 +185,14 @@ def build_simulation_template(sim_type: str, txt: str | None) -> tuple[object, s
     elif sim_type == "CONTINUE":
         sim = DEMC_CONTINUE_input()
         sim.INITIAL_CONDITIONS = f"CONTINUE {txt}" if txt else sim.INITIAL_CONDITIONS
-        sim.GENERATION_FILE = "inj_file_py"
+        sim.GENERATION_FILE = "inj_file_py.in"
         sim.IIOFFSPRING = 1
         sim.RLC_FILE = "rlc.in"
         filename = "demc_CONTINUE"
     elif sim_type == "FF":
         sim = DEMC_FF_input()
         sim.INITIAL_CONDITIONS = f"FF {txt}" if txt else sim.INITIAL_CONDITIONS
-        sim.GENERATION_FILE = "inj_file_py"
+        sim.GENERATION_FILE = "inj_file_py.in"
         sim.IIOFFSPRING = 1
         filename = "demc_FF"
     else:
@@ -206,10 +206,10 @@ def configure_simulation_defaults(sim, simulation_dir: str) -> None:
     sim.MATERIAL_INPUT = "Material_fb.in"
     sim.DIMENSIONS = 3
     sim.LENGTH_UNIT = 1.0e-6
-    sim.SUPERCHARGE = [-1000.0, -1000.0]
-    sim.TIMER = [500e-12, "CONSTANT", 1e-13]
-    sim.ELECTRON = 1_000_000
-    sim.HOLE = 1_000_000
+    sim.SUPERCHARGE = [-1.0, -1.0]
+    sim.TIMER = [3e-10, "CONSTANT", 1e-14]
+    sim.ELECTRON = 100_000
+    sim.HOLE = 100_000
     sim.POISSON = ["EVENTS", 2]
     sim.RAMO = ["EVENTS", 8]
     sim.SUBHISTORY_FORMAT = "VTKANDTEXT"
@@ -224,12 +224,19 @@ def main():
     base_dir = "/mnt/polmcad" # Base directory where server filesystem is mounted
     server_dir = "MonteCarlo/DEMC" # Folder containing device folders
     device_dir = "SPAD_FBK_v2/3D" # Device folder
-    simulation_dir = "MC/voltage_ramp" # Simulation folder
+    simulation_name = "breakdown" # Name of the simulation
+    # simulation_dir = "FF/voltage_ramp" # Simulation folder
+    # load_dir = "MC/voltage_ramp" # Load folder for CONTINUE or FF simulations
+
+    # Electric field subhistory to load for FF simulations
+    load_Efield_index = "2"
+    # initial subhistory index for CONTINUE simulations
+    load_subhistory_index = "10"
 
     threads = 10
     seed_run = False
-    bias_run = True
-    vbd_run = False
+    bias_run = False
+    vbd_run = True
 
     local_path = os.path.join(base_dir, server_dir, device_dir)
     ssh_path = os.path.join(server_dir, device_dir)
@@ -287,13 +294,14 @@ def main():
         sim, filename = build_simulation_template("MC", None)
         sim_type = "BIAS"
         # configure default parameters
+        simulation_dir = f"MC/{simulation_name}" # Simulation folder
         configure_simulation_defaults(sim, simulation_dir)
         # contacts name
         bias_contact = "pcontact"
         ground_contact = "ncontact"
         # bias values
-        # vdc_list = np.linspace(-35, -15, 21).tolist()  # from 0.5V to 2.0V with 5 points
-        vdc_list = [1]  # from 0.5V to 2.0V with 5 points
+        vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
+        # vdc_list = [1]  # from 0.5V to 2.0V with 5 points
         ground = "0.0"
 
         # kind of potential
@@ -318,16 +326,24 @@ def main():
             all_tasks.append(task)
             
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
-        with ThreadPoolExecutor(max_workers=21) as ex:
+        with ThreadPoolExecutor(max_workers=len(vdc_list)) as ex:
             results = list(ex.map(lambda task: assign_job(task, sim_type), all_tasks))
 
     if vbd_run:
-        init_subhistory = "2"
         # build class
         sim, filename = build_simulation_template("FF", None)
         sim_type = "VBD"
+        simulation_dir = f"FF/{simulation_name}" # Simulation folder
+        load_dir = f"MC/voltage_ramp" # Load folder for CONTINUE or FF simulations
         # configure default parameters
         configure_simulation_defaults(sim, simulation_dir)
+        # change dt to be able to catch impact ionization
+        sim.TIMER = [100e-12, "CONSTANT", 1e-15]
+        # fix number of particles since we are simulating breakdown
+        sim.ELECTRON = 100_000
+        sim.HOLE = 100_000
+        # increase subhistory frequency
+        sim.SUBHISTORY = ["PERIOD", 0, 10e-15]
         # contacts name
         bias_contact = "pcontact"
         ground_contact = "ncontact"
@@ -345,11 +361,12 @@ def main():
         for i, bias in enumerate(vdc_list):
             sim_copy = copy.deepcopy(sim)
             sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
+            # sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
             sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
             # initial condition for FF: load EField subhistory from previous MC sim
-            sim_copy.INITIAL_CONDITIONS = "FF " + f"{sim_copy.SIMULATION}/ElectricField_{init_subhistory}.txt"
+            sim_copy.INITIAL_CONDITIONS = "FF " + f"{load_dir}-{bias:.2f}V/ElectricField_{load_Efield_index}.txt"
             # simulation will be stored under FF directory
-            sim_copy.SIMULATION = "FF/" + sim_copy.SIMULATION
+            # sim_copy.SIMULATION = "FF/" + sim_copy.SIMULATION
             filename  = filename+f"-{bias:.2f}V.in"
             task = (
                 sim_copy,
@@ -363,7 +380,7 @@ def main():
             
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
         with ThreadPoolExecutor(max_workers=21) as ex:
-            results = ex.map(assign_job, (all_tasks,sim_type))
+            results = list(ex.map(lambda task: assign_job(task, sim_type), all_tasks))
             
 
 
