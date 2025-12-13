@@ -190,12 +190,12 @@ def main():
         # Build task list (flat)
         all_tasks = []
         
-        for seed in enumerate(seed_list):
+        for seed in seed_list:
             sim_copy = copy.deepcopy(sim)
             sim_copy.SEED = seed
-            sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{seed:.2f}V"
-            filename  = filename+f"-s{seed:.2f}.in"
-            log_file = f'log-s{seed:.2f}.txt'
+            sim_copy.SIMULATION = sim_copy.SIMULATION + f"-s{seed}"
+            filename  = filename+f"-s{seed}.in"
+            log_file = f'log-s{seed}.txt'
             task = (
                 sim_copy,
                 local_path,
@@ -222,7 +222,7 @@ def main():
         ground_contact = "ncontact"
         # bias values
         # vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
-        vdc_list = [1] 
+        vdc_list = [1.5] 
         ground = "0.0"
 
         # kind of potential
@@ -231,7 +231,7 @@ def main():
         all_tasks = []
 
         
-        for bias in enumerate(vdc_list):
+        for bias in vdc_list:
             sim_copy = copy.deepcopy(sim)
             sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
             sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
@@ -280,7 +280,7 @@ def main():
         all_tasks = []
 
         
-        for bias in enumerate(vdc_list):
+        for bias in vdc_list:
             sim_copy = copy.deepcopy(sim)
             sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
             sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
