@@ -24,7 +24,7 @@ SERVERS = {
     },
     'polmcad1': {
         "sem": Semaphore(2),
-        "enabled": False,
+        "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
@@ -32,14 +32,14 @@ SERVERS = {
     },
     'polmcad2': {
         "sem": Semaphore(1),
-        "enabled": True,
+        "enabled": False,
         "numa_nodes": {
             0 : Semaphore(1),
         }
     },
     'polmcad6': {
         "sem": Semaphore(1),
-        "enabled": True,
+        "enabled": False,
         "numa_nodes": {
             0 : Semaphore(1),
         }
@@ -53,7 +53,7 @@ SERVERS = {
     },
     'polmcad8': {
         "sem": Semaphore(4),
-        "enabled": True,
+        "enabled": False,
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
@@ -79,13 +79,14 @@ def assign_job(task):
                         if node_sem.acquire(blocking=False):
                             try:
                                 ssh_cmds(task,host,node_id)
+                                return  # Task completed, exit the loop
                             finally:
                                     node_sem.release()
                 finally:
                     server_sem.release()
         time.sleep(0.2)  # Wait before retrying if no server is available
 
-def ssh_cmds(task,server,node_id,log_file):
+def ssh_cmds(task,server,node_id):
         # -------------------------------------------------------------------------------------------------- #
         #  function to execute the command already prepared (task) and sent to the correct server - numanode #
         # -------------------------------------------------------------------------------------------------- #
@@ -100,21 +101,36 @@ def ssh_cmds(task,server,node_id,log_file):
             f.write(str(sim))
             f.write("\n")
         print(f"Created input file: {write_path}\n")
-        # build ssh command: cd to simulation path, run simulation on a numa node, move input and log file to simulation folder (activate mv only if simulation ran successfully)
-        # to better visualize activate "word wrap" (alt+z)
-        cmd = ['ssh', server, 'cd', ssh_path,'&&','numactl', '-N', str(node_id), '-m', str(node_id), './MC3D_release', 'DEMC', filename, '&&', 'mv', filename, log_file, sim.SIMULATION]
-        print(f"Running the simulation {sim.SIMULATION} on {server}...\n")
-        # run simulation
-        try:
-            with open(log_path, 'w') as f:
-                result = subprocess.run(cmd, check=True, stdout=f, stderr=f)
-            print(f"Exited with code {result.returncode}\n" )
-        except subprocess.CalledProcessError as e:
-            # If the command failed, stderr has been written to the log file (if opened). Print a short message.
-            print("An error occurred while trying to list files.")
-            print(e)
-        print(f"Moved {filename} file to {sim.SIMULATION}\n")
 
+        # Build remote command as a single string for clarity
+        # Use -T to disable pseudo-tty (avoids banner/MOTD in some cases)
+        # Redirect simulation output to log file ON THE REMOTE SIDE
+        remote_cmd_with_log = (
+            f'cd {ssh_path} && '
+            f'numactl -N {node_id} -m {node_id} ./MC3D_release DEMC {filename} > {log_file} 2>&1 && '
+            f'mv {filename} {log_file} {sim.SIMULATION}'
+        )
+        cmd = ['ssh', '-T', server, remote_cmd_with_log]
+        # # build ssh command: cd to simulation path, run simulation on a numa node, move input and log file to simulation folder (activate mv only if simulation ran successfully)
+        # # to better visualize activate "word wrap" (alt+z)
+        # cmd = ['ssh', server, 'cd', ssh_path,'&&','numactl', '-N', str(node_id), '-m', str(node_id), './MC3D_release', 'DEMC', filename, '&&', 'mv', filename, log_file, sim.SIMULATION]
+        print(f"Running the simulation {sim.SIMULATION} on {server}...\n")
+        # # run simulation
+        # try:
+        #     with open(log_path, 'w') as f:
+        #         result = subprocess.run(cmd, check=True, stdout=f, stderr=f)
+        #     print(f"Exited with code {result.returncode}\n" )
+        # except subprocess.CalledProcessError as e:
+        #     # If the command failed, stderr has been written to the log file (if opened). Print a short message.
+        #     print("An error occurred while trying to list files.")
+        #     print(e)
+        try:
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            print(f"Exited with code {result.returncode}\n")
+        except subprocess.CalledProcessError as e:
+            print(f"Error running simulation: {e}")
+            print(f"Remote stderr: {e.stderr}")
+        print(f"Moved {filename} file to {sim.SIMULATION}\n")
 def build_simulation_template(sim_type: str, txt: str | None) -> tuple[object, str]:
     if sim_type == "MC":
         sim = DEMC_MC_input()
@@ -139,14 +155,14 @@ def build_simulation_template(sim_type: str, txt: str | None) -> tuple[object, s
 
 def configure_simulation_defaults(sim, simulation_dir: str) -> None:
     sim.SIMULATION = simulation_dir
-    sim.THREADS = 9
-    sim.MESH = "si1e17_epi1e13_di5e16"
-    sim.MATERIAL_INPUT = "Material_fb.in"
+    sim.THREADS = 40
+    sim.MESH = "dop1e17"
+    sim.MATERIAL_INPUT = "Material_ab.in"
     sim.DIMENSIONS = 3
     sim.LENGTH_UNIT = 1.0e-6
     sim.SUPERCHARGE = [-1.0, -1.0]
-    sim.TIMER = [3e-10, "CONSTANT", 1e-14]
-    sim.ELECTRON = 100_000
+    sim.TIMER = [1e-12, "CONSTANT", 1e-14]
+    sim.ELECTRON = 1_000_000
     sim.HOLE = 100_000
     sim.POISSON = ["EVENTS", 2]
     sim.RAMO = ["EVENTS", 8]
