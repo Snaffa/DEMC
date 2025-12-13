@@ -124,7 +124,7 @@ def seed_func(sim,seed,input_path,filename, server ,node_id,):
         print(f"Moved input file to {sim.SIMULATION}\n")
 
 def bias_func(task,server,node_id,log_file='log.txt'):
-        (sim, bias_contact, bias, ground_contact, ground, bias_potential_type, ground_potential_type, local_path, ssh_path, filename) = task
+        (sim, bias, local_path, ssh_path, filename) = task
         # sim.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
         # sim.SIMULATION = sim.SIMULATION + f"-{bias:.2f}V"
         # filename  = filename+f"-{bias:.2f}V.in"
@@ -201,8 +201,8 @@ def main():
 
     threads = 10
     seed_run = False
-    bias_run = False
-    vbd_run = True
+    bias_run = True
+    vbd_run = False
 
     local_path = os.path.join(base_dir, server_dir, device_dir)
     ssh_path = os.path.join(server_dir, device_dir)
@@ -277,17 +277,12 @@ def main():
         
         for i, bias in enumerate(vdc_list):
             sim_copy = copy.deepcopy(sim)
-            sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
+            sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
             sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
             filename  = filename+f"-{bias:.2f}V.in"
             task = (
                 sim_copy,
-                bias_contact,
                 bias,
-                ground_contact,
-                ground,
-                bias_potential_type,
-                ground_potential_type,
                 local_path,
                 ssh_path,
                 filename,
