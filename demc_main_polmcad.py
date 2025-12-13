@@ -24,29 +24,32 @@ SERVERS = {
     },
     'polmcad1': {
         "sem": Semaphore(2),
-        "enabled": True,
+        "enabled": False,
         "numa_nodes": {
-            0 : Semaphore(0),
+            0 : Semaphore(1),
             1 : Semaphore(1),
         }
     },
-    'polmcad2': {"sem": Semaphore(1),
-                "enabled": True,
-                "numa_nodes": {
+    'polmcad2': {
+        "sem": Semaphore(1),
+        "enabled": True,
+        "numa_nodes": {
             0 : Semaphore(1),
-            }
+        }
     },
-    'polmcad6': {"sem": Semaphore(1),
-                "enabled": True,
-                "numa_nodes": {
+    'polmcad6': {
+        "sem": Semaphore(1),
+        "enabled": True,
+        "numa_nodes": {
             0 : Semaphore(1),
-            }
+        }
     },
-    'polmcad7': {"sem": Semaphore(1),
-                "enabled": True,
-                "numa_nodes": {
+    'polmcad7': {
+        "sem": Semaphore(1),
+        "enabled": False,
+        "numa_nodes": {
             0 : Semaphore(1),
-            }
+        }
     },
     'polmcad8': {
         "sem": Semaphore(4),
@@ -60,7 +63,7 @@ SERVERS = {
     },
 }
 
-def assign_job(task):
+def assign_job(task,sim_type):
     while True:
         for host, s in SERVERS.items():
             if not s.get("enabled", True):
@@ -71,11 +74,24 @@ def assign_job(task):
                 try:
                     for node_id, node_sem in s["numa_nodes"].items():
                         if node_sem.acquire(blocking=False):
-                            try:
-                                bias_func(task,host,node_id)
-                                return
-                            finally:
-                                node_sem.release()
+                            if sim_type == 'SEED':
+                                try:
+                                    seed_func(task,host,node_id)
+                                    return
+                                finally:
+                                    node_sem.release()
+                            elif sim_type == 'BIAS':
+                                try:
+                                    bias_func(task,host,node_id)
+                                    return
+                                finally:
+                                    node_sem.release()
+                            elif sim_type == 'VBD':
+                                try:
+                                    vbd_func(task,host,node_id)
+                                    return
+                                finally:
+                                    node_sem.release()
 
                 finally:
                     server_sem.release()
@@ -159,33 +175,34 @@ def build_simulation_template(sim_type: str, txt: str | None) -> tuple[object, s
 def configure_simulation_defaults(sim, simulation_dir: str) -> None:
     sim.SIMULATION = simulation_dir
     sim.THREADS = 9
-    sim.MESH = "pn"
+    sim.MESH = "si1e17_epi1e13_di5e16"
     sim.MATERIAL_INPUT = "Material_fb.in"
     sim.DIMENSIONS = 3
     sim.LENGTH_UNIT = 1.0e-6
-    sim.SUPERCHARGE = [-10.0, -10.0]
-    sim.TIMER = [200e-12, "CONSTANT", 1e-15]
+    sim.SUPERCHARGE = [-1000.0, -1000.0]
+    sim.TIMER = [500e-12, "CONSTANT", 1e-13]
     sim.ELECTRON = 1_000_000
     sim.HOLE = 1_000_000
     sim.POISSON = ["EVENTS", 2]
     sim.RAMO = ["EVENTS", 8]
     sim.SUBHISTORY_FORMAT = "VTKANDTEXT"
-    sim.SUBHISTORY = ["TOTAL", 10]
+    sim.SUBHISTORY = ["TOTAL", 2]
     sim.CONTACT_POTENTIAL = ["ncontact 0.0 NATIVE", "pcontact 0.0 NATIVE"]
     sim.SEED = 111
     sim.TUNNELING = 0
     sim.SELFFORCES = 0
-    sim.RLC_FILE = "rlc.in"
+    sim.RLC_FILE = ""
 
 def main():
     base_dir = "/mnt/polmcad" # Base directory where server filesystem is mounted
     server_dir = "MonteCarlo/DEMC" # Folder containing device folders
     device_dir = "prove" # Device folder
-    simulation_dir = f"IV-R2336" # Simulation folder
+    simulation_dir = f"try" # Simulation folder
 
     threads = 10
     seed_run = False
     bias_run = True
+    vbd_run = False
     # build class
     sim, filename = build_simulation_template("MC", None)
 
@@ -195,23 +212,8 @@ def main():
     local_path = os.path.join(base_dir, server_dir, device_dir)
     ssh_path = os.path.join(server_dir, device_dir)
 
-    # List servers manually; edit this list depending on available servers
-    # Example: server_list = ['polmcad0', 'polmcad1', 'polmcad2']
-    server_list = ['polmcad2','polmcad6','polmcad8']
-
-    # semahores
-
-    # Manual NUMA map: set the number of NUMA nodes for each server here.
-    # Edit these values to match your machines. If a server is missing, node 0 is used.
-#     server_numa_map = {
-#     'polmcad0': 4,            # usa nodes 0..3
-#     'polmcad2': [0,2],        # usa solo node 0 e 2 (salta node 1)
-#     'polmcad6': [1,3,5],      # usa i nodi 1,3,5
-#     'polmcad7': 8,
-#     'polmcad8': 4,
-# }
-
     if seed_run:
+        sim_type = "SEED"
         seed_low = 0
         seed_high = 1000
         seed_n = 2
@@ -253,43 +255,28 @@ def main():
                 f.result()
 
     if bias_run:
+        # check simulation MC
+        if not(sim.INITIAL_CONDITIONS.startswith("MC")):
+            print("Bias run compatible only with MC simulations. Exiting bias run.")
+            return
+        sim_type = "BIAS"
+
         # contacts name
         bias_contact = "pcontact"
         ground_contact = "ncontact"
         # bias values
-        vdc_list = np.linspace(0, 5, 11).tolist()  # from 0.5V to 2.0V with 5 points
-        # vdc_list = [1.50,2.00,2.5,3.50,4.00]  # from 0.5V to 2.0V with 5 points
+        # vdc_list = np.linspace(-35, -15, 21).tolist()  # from 0.5V to 2.0V with 5 points
+        vdc_list = [1]  # from 0.5V to 2.0V with 5 points
         ground = "0.0"
-        # kind of potential
 
+        # kind of potential
         bias_potential_type = "NATIVE"  # or "WORKFUNCTION"
         ground_potential_type = "NATIVE"  # or "WORKFUNCTION"
-        
-        # Build list of all available slots: (server, numa_node)
-        # This flattens server_numa_map into individual slots
-        # all_slots = []
-        
-        # print(f"Available slots: {all_slots}")
-        # print(f"Total slots: {len(all_slots)}")
-
-        # Build flat task list with round-robin assignment to SLOTS (not servers)
         all_tasks = []
-        counter = 0
 
         
         for i, bias in enumerate(vdc_list):
-            # Round-robin over slots, not servers
-            # server = server_list[i% len(server_list)]
             sim_copy = copy.deepcopy(sim)
-            
-            # if server == 'polmcad8' or server == 'polmcad0':
-            #     node_id = 3-counter  # polmcad8 has 4 NUMA
-            #     if counter < 3:
-            #         counter+=1
-            #     else:
-            #         counter = 0
-            # else:
-            #     node_id = 0
             task = (
                 sim_copy,
                 bias_contact,
@@ -301,28 +288,55 @@ def main():
                 local_path,
                 ssh_path,
                 filename,
-                # node_id,
             )
 
             all_tasks.append(task)
-
-        # Total concurrent slots = sum of NUMA nodes across all servers
-        # total_slots = len(all_slots)
-        print(f"Servers: {server_list}")
-        # print(f"Total concurrent slots: {total_slots}")
-        # print(f"Total tasks: {len(all_tasks)}")
-        
-        # Show task distribution
-        # from collections import Counter
-        # task_dist = Counter(server for server, _ in all_tasks)
-        # print(f"Tasks per server: {dict(task_dist)}")
-        # for i,server in enumerate(server_list):
-        #     sem = SERVER_LIMITS[server]
-        #     if sem.acquire(blocking=False):
-                
+            
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
-        with ThreadPoolExecutor(max_workers=11) as ex:
-            results = ex.map(assign_job, all_tasks)
+        with ThreadPoolExecutor(max_workers=21) as ex:
+            results = list(ex.map(lambda task: assign_job(task, sim_type), all_tasks))
+
+    if vbd_run:
+        # check simulation FF
+        if not(sim.INITIAL_CONDITIONS.startswith("FF")):
+            print("Vbd run compatible only with FF simulations. Exiting Vbd run.")
+            return
+        sim_type = "VBD"
+        
+        # contacts name
+        bias_contact = "pcontact"
+        ground_contact = "ncontact"
+        # bias values
+        vdc_list = np.linspace(-35, -15, 21).tolist()  # from 0.5V to 2.0V with 5 points
+        # vdc_list = [1.50,2.00,2.5,3.50,4.00]  # from 0.5V to 2.0V with 5 points
+        ground = "0.0"
+
+        # kind of potential
+        bias_potential_type = "NATIVE"  # or "WORKFUNCTION"
+        ground_potential_type = "NATIVE"  # or "WORKFUNCTION"
+        all_tasks = []
+
+        
+        for i, bias in enumerate(vdc_list):
+            sim_copy = copy.deepcopy(sim)
+            task = (
+                sim_copy,
+                bias_contact,
+                bias,
+                ground_contact,
+                ground,
+                bias_potential_type,
+                ground_potential_type,
+                local_path,
+                ssh_path,
+                filename,
+            )
+
+            all_tasks.append(task)
+            
+        # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
+        with ThreadPoolExecutor(max_workers=21) as ex:
+            results = ex.map(assign_job, (all_tasks,sim_type))
             
 
 
