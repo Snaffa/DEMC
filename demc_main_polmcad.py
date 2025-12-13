@@ -32,14 +32,14 @@ SERVERS = {
     },
     'polmcad2': {
         "sem": Semaphore(1),
-        "enabled": False,
+        "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
         }
     },
     'polmcad6': {
         "sem": Semaphore(1),
-        "enabled": False,
+        "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
         }
@@ -53,7 +53,7 @@ SERVERS = {
     },
     'polmcad8': {
         "sem": Semaphore(4),
-        "enabled": False,
+        "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
@@ -155,14 +155,14 @@ def build_simulation_template(sim_type: str, txt: str | None) -> tuple[object, s
 
 def configure_simulation_defaults(sim, simulation_dir: str) -> None:
     sim.SIMULATION = simulation_dir
-    sim.THREADS = 40
-    sim.MESH = "dop1e17"
-    sim.MATERIAL_INPUT = "Material_ab.in"
+    sim.THREADS = 9
+    sim.MESH = "si1e17_epi1e13_di5e16"
+    sim.MATERIAL_INPUT = "Material_fb.in"
     sim.DIMENSIONS = 3
     sim.LENGTH_UNIT = 1.0e-6
     sim.SUPERCHARGE = [-1.0, -1.0]
-    sim.TIMER = [1e-12, "CONSTANT", 1e-14]
-    sim.ELECTRON = 1_000_000
+    sim.TIMER = [3e-10, "CONSTANT", 1e-14]
+    sim.ELECTRON = 100_000
     sim.HOLE = 100_000
     sim.POISSON = ["EVENTS", 2]
     sim.RAMO = ["EVENTS", 8]
@@ -174,11 +174,14 @@ def configure_simulation_defaults(sim, simulation_dir: str) -> None:
     sim.SELFFORCES = 0
     sim.RLC_FILE = ""
 
+def get_max_concurrent_tasks():
+    return sum(len(s["numa_nodes"]) for s in SERVERS.values() if s.get("enabled", True))
+
 def main():
     base_dir = "/mnt/polmcad" # Base directory where server filesystem is mounted
     server_dir = "MonteCarlo/DEMC" # Folder containing device folders
-    device_dir = "prove" # Device folder
-    simulation_name = "pippo" # Name of the simulation
+    device_dir = "SPAD_FBK_v2/quasi_1D" # Device folder
+    simulation_name = "voltage_ramp" # Name of the simulation
 
     # Electric field subhistory to load for FF simulations
     load_Efield_index = "2"
@@ -223,22 +226,20 @@ def main():
         all_tasks.append(task)
             
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
-        with ThreadPoolExecutor(max_workers=len(seed_list)) as ex:
+        with ThreadPoolExecutor(max_workers=get_max_concurrent_tasks()) as ex:
             results = list(ex.map(assign_job, all_tasks))
 
     if bias_run:
         # check simulation MC
         # build class
-        sim, filename = build_simulation_template("MC", None)
         # configure default parameters
         simulation_dir = f"MC/{simulation_name}" # Simulation folder
-        configure_simulation_defaults(sim, simulation_dir)
         # contacts name
         bias_contact = "pcontact"
         ground_contact = "ncontact"
         # bias values
-        # vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
-        vdc_list = [1.5] 
+        vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
+        # vdc_list = [1.5] 
         ground = "0.0"
 
         # kind of potential
@@ -248,13 +249,15 @@ def main():
 
         
         for bias in vdc_list:
-            sim_copy = copy.deepcopy(sim)
-            sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
-            sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
+            sim, filename = build_simulation_template("MC", None)
+            configure_simulation_defaults(sim, simulation_dir)
+            # sim_copy = copy.deepcopy(sim)
+            sim.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
+            sim.SIMULATION = sim.SIMULATION + f"-{bias:.2f}V"
             filename  = filename+f"-{bias:.2f}V.in"
             log_file = f'log-{bias:.2f}.txt'
             task = (
-                sim_copy,
+                sim,
                 local_path,
                 ssh_path,
                 filename,
@@ -264,7 +267,7 @@ def main():
             all_tasks.append(task)
             
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
-        with ThreadPoolExecutor(max_workers=len(vdc_list)) as ex:
+        with ThreadPoolExecutor(max_workers=get_max_concurrent_tasks()) as ex:
             results = list(ex.map(assign_job, all_tasks))
 
     if vbd_run:
@@ -316,7 +319,7 @@ def main():
             all_tasks.append(task)
             
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
-        with ThreadPoolExecutor(max_workers=len(vdc_list)) as ex:
+        with ThreadPoolExecutor(max_workers=get_max_concurrent_tasks()) as ex:
             results = list(ex.map(assign_job, all_tasks))
             
 
