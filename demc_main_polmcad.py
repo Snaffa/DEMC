@@ -63,7 +63,7 @@ SERVERS = {
     },
 }
 
-def assign_job(task,sim_type,init_subhistory=None):
+def assign_job(task,sim_type):
     while True:
         for host, s in SERVERS.items():
             if not s.get("enabled", True):
@@ -224,7 +224,7 @@ def main():
     base_dir = "/mnt/polmcad" # Base directory where server filesystem is mounted
     server_dir = "MonteCarlo/DEMC" # Folder containing device folders
     device_dir = "SPAD_FBK_v2/3D" # Device folder
-    simulation_dir = f"MC/voltage_ramp" # Simulation folder
+    simulation_dir = "MC/voltage_ramp" # Simulation folder
 
     threads = 10
     seed_run = False
@@ -332,7 +332,7 @@ def main():
         bias_contact = "pcontact"
         ground_contact = "ncontact"
         # bias values
-        vdc_list = np.linspace(-35, -15, 21).tolist()  # from 0.5V to 2.0V with 5 points
+        vdc_list = [-15]  # from 0.5V to 2.0V with 5 points
         # vdc_list = [1.50,2.00,2.5,3.50,4.00]  # from 0.5V to 2.0V with 5 points
         ground = "0.0"
 
