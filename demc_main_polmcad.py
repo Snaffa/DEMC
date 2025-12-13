@@ -150,6 +150,33 @@ def bias_func(task,server,node_id,log_file='log.txt'):
             print(e)
         print(f"Moved {filename} file to {sim.SIMULATION}\n")
 
+def vbd_func(task,server,node_id,log_file='log.txt'):
+        (sim, bias, local_path, ssh_path, filename) = task
+        # sim.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
+        # sim.SIMULATION = sim.SIMULATION + f"-{bias:.2f}V"
+        # filename  = filename+f"-{bias:.2f}V.in"
+        write_path = os.path.join(local_path, filename)
+        
+        with open(write_path, "w") as f:
+            f.write(str(sim))
+            f.write("\n")
+        print(f"Created input file: {write_path}\n")
+        # print(f"{str(sim)}\n")
+
+        cmd = ['ssh', server, 'cd', ssh_path,'&&','numactl', '-N', str(node_id), '-m', str(node_id), './MC3D_release', 'DEMC', filename, '&&', 'mv', filename, sim.SIMULATION]
+        print(f"Running the simulation {sim.SIMULATION} on {server}...\n")
+        log_file=f'log{bias:.2f}.txt'
+        try:
+            log_path = os.path.join(local_path, log_file)
+            with open(log_path, 'w') as f:
+                result = subprocess.run(cmd, check=True, stdout=f, stderr=f)
+            print(f"Exited with code {result.returncode}\n" )
+        except subprocess.CalledProcessError as e:
+            # If the command failed, stderr has been written to the log file (if opened). Print a short message.
+            print("An error occurred while trying to list files.")
+            print(e)
+        print(f"Moved {filename} file to {sim.SIMULATION}\n")
+
 def build_simulation_template(sim_type: str, txt: str | None) -> tuple[object, str]:
     if sim_type == "MC":
         sim = DEMC_MC_input()
@@ -317,19 +344,19 @@ def main():
         
         for i, bias in enumerate(vdc_list):
             sim_copy = copy.deepcopy(sim)
-            # sim
+            sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
+            sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
+            # initial condition for FF: load EField subhistory from previous MC sim
+            sim_copy.INITIAL_CONDITIONS = "FF " + f"{sim_copy.SIMULATION}/ElectricField_{init_subhistory}.txt"
+            # simulation will be stored under FF directory
+            sim_copy.SIMULATION = "FF/" + sim_copy.SIMULATION
+            filename  = filename+f"-{bias:.2f}V.in"
             task = (
                 sim_copy,
-                bias_contact,
                 bias,
-                ground_contact,
-                ground,
-                bias_potential_type,
-                ground_potential_type,
                 local_path,
                 ssh_path,
                 filename,
-                init_subhistory,
             )
 
             all_tasks.append(task)
