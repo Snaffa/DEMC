@@ -63,7 +63,10 @@ SERVERS = {
     },
 }
 
-def assign_job(task,sim_type):
+def assign_job(task):
+        # -------------------------------------------------------------------------------------------------- #
+        #  function to check if a server is enabled and if a certain numanode is free (semaphore)            #
+        # -------------------------------------------------------------------------------------------------- #
     while True:
         for host, s in SERVERS.items():
             if not s.get("enabled", True):
@@ -74,100 +77,35 @@ def assign_job(task,sim_type):
                 try:
                     for node_id, node_sem in s["numa_nodes"].items():
                         if node_sem.acquire(blocking=False):
-                            if sim_type == 'SEED':
-                                try:
-                                    seed_func(task,host,node_id)
-                                    return
-                                finally:
+                            try:
+                                ssh_cmds(task,host,node_id)
+                            finally:
                                     node_sem.release()
-                            elif sim_type == 'BIAS':
-                                try:
-                                    bias_func(task,host,node_id)
-                                    return
-                                finally:
-                                    node_sem.release()
-                            elif sim_type == 'VBD':
-                                try:
-                                    vbd_func(task,host,node_id)
-                                    return
-                                finally:
-                                    node_sem.release()
-
                 finally:
                     server_sem.release()
         time.sleep(0.2)  # Wait before retrying if no server is available
-                    
-def seed_func(sim,seed,input_path,filename, server ,node_id,):
-        sim.SEED = seed 
-        sim.SIMULATION = sim.SIMULATION + f"_seed{sim.SEED}"
-        filename  = filename+f"_seed{sim.SEED}.in"
-        input_path_write = os.path.join(input_path, filename)
-        
-        with open(input_path_write, "w") as f:
-            f.write(str(sim))
-            f.write("\n")
-        print(f"Created input file: {input_path_write}\n")
-        print(f"{str(sim)}\n") 
 
-        # run_cmd = f"numactl -N {node_id} -m {node_id} ./MC3D_release DEMC {filename}"
-        ssh_run_cmd = ['ssh',server,'cd',input_path,'&&','ssh',server,'numactl', '-N', str(node_id), '-m', str(node_id), './MC3D_release', 'DEMC', filename]
-        print(f"Running {ssh_run_cmd}...\n")
-        with open(log_file, 'w') as f:
-            p = subprocess.Popen(ssh_run_cmd, stdout=f)
-            p.wait()
-        print(f"Exited with code {p.returncode}\n" )
-        mv_cmd = f"mv {input_path_write} {sim.SIMULATION}"
-        ssh_mv_cmd = f"ssh {server} '{mv_cmd}'"
-        print(f"Moving input file to simulation directory with command...\n")
-        p = subprocess.Popen(ssh_mv_cmd, stdout=subprocess.PIPE)
-        p.wait()
-        print(f"Moved input file to {sim.SIMULATION}\n")
-
-def bias_func(task,server,node_id,log_file='log.txt'):
-        (sim, bias, local_path, ssh_path, filename) = task
-        # sim.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
-        # sim.SIMULATION = sim.SIMULATION + f"-{bias:.2f}V"
-        # filename  = filename+f"-{bias:.2f}V.in"
+def ssh_cmds(task,server,node_id,log_file):
+        # -------------------------------------------------------------------------------------------------- #
+        #  function to execute the command already prepared (task) and sent to the correct server - numanode #
+        # -------------------------------------------------------------------------------------------------- #
+        # Unpack task
+        (sim, local_path, ssh_path, filename, log_file) = task
+        # build path for input file
         write_path = os.path.join(local_path, filename)
-        
+        # build path for log file
+        log_path = os.path.join(local_path, log_file)
+        # write input file
         with open(write_path, "w") as f:
             f.write(str(sim))
             f.write("\n")
         print(f"Created input file: {write_path}\n")
-        # print(f"{str(sim)}\n")
-
-        cmd = ['ssh', server, 'cd', ssh_path,'&&','numactl', '-N', str(node_id), '-m', str(node_id), './MC3D_release', 'DEMC', filename, '&&', 'mv', filename, sim.SIMULATION]
+        # build ssh command: cd to simulation path, run simulation on a numa node, move input and log file to simulation folder (activate mv only if simulation ran successfully)
+        # to better visualize activate "word wrap" (alt+z)
+        cmd = ['ssh', server, 'cd', ssh_path,'&&','numactl', '-N', str(node_id), '-m', str(node_id), './MC3D_release', 'DEMC', filename, '&&', 'mv', filename, log_file, sim.SIMULATION]
         print(f"Running the simulation {sim.SIMULATION} on {server}...\n")
-        log_file=f'log{bias:.2f}.txt'
+        # run simulation
         try:
-            log_path = os.path.join(local_path, log_file)
-            with open(log_path, 'w') as f:
-                result = subprocess.run(cmd, check=True, stdout=f, stderr=f)
-            print(f"Exited with code {result.returncode}\n" )
-        except subprocess.CalledProcessError as e:
-            # If the command failed, stderr has been written to the log file (if opened). Print a short message.
-            print("An error occurred while trying to list files.")
-            print(e)
-        print(f"Moved {filename} file to {sim.SIMULATION}\n")
-
-def vbd_func(task,server,node_id,log_file='log.txt'):
-        (sim, bias, local_path, ssh_path, filename) = task
-        # sim.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
-        # sim.SIMULATION = sim.SIMULATION + f"-{bias:.2f}V"
-        # filename  = filename+f"-{bias:.2f}V.in"
-        write_path = os.path.join(local_path, filename)
-        
-        with open(write_path, "w") as f:
-            f.write(str(sim))
-            f.write("\n")
-        print(f"Created input file: {write_path}\n")
-        # print(f"{str(sim)}\n")
-
-        cmd = ['ssh', server, 'cd', ssh_path,'&&','numactl', '-N', str(node_id), '-m', str(node_id), './MC3D_release', 'DEMC', filename, '&&', 'mv', filename, sim.SIMULATION]
-        print(f"Running the simulation {sim.SIMULATION} on {server}...\n")
-        log_file=f'log{bias:.2f}.txt'
-        try:
-            log_path = os.path.join(local_path, log_file)
             with open(log_path, 'w') as f:
                 result = subprocess.run(cmd, check=True, stdout=f, stderr=f)
             print(f"Exited with code {result.returncode}\n" )
@@ -223,26 +161,22 @@ def configure_simulation_defaults(sim, simulation_dir: str) -> None:
 def main():
     base_dir = "/mnt/polmcad" # Base directory where server filesystem is mounted
     server_dir = "MonteCarlo/DEMC" # Folder containing device folders
-    device_dir = "SPAD_FBK_v2/3D" # Device folder
-    simulation_name = "breakdown" # Name of the simulation
-    # simulation_dir = "FF/voltage_ramp" # Simulation folder
-    # load_dir = "MC/voltage_ramp" # Load folder for CONTINUE or FF simulations
+    device_dir = "prove" # Device folder
+    simulation_name = "pippo" # Name of the simulation
 
     # Electric field subhistory to load for FF simulations
     load_Efield_index = "2"
     # initial subhistory index for CONTINUE simulations
     load_subhistory_index = "10"
 
-    threads = 10
     seed_run = False
-    bias_run = False
-    vbd_run = True
+    bias_run = True
+    vbd_run = False
 
     local_path = os.path.join(base_dir, server_dir, device_dir)
     ssh_path = os.path.join(server_dir, device_dir)
 
     if seed_run:
-        sim_type = "SEED"
         # build class
         sim, filename = build_simulation_template("MC", None)
         # configure default parameters
@@ -251,48 +185,35 @@ def main():
         seed_low = 0
         seed_high = 1000
         seed_n = 2
-        seed_array = rnd.sample(range(seed_low, seed_high), seed_n)
+        seed_list = rnd.sample(range(seed_low, seed_high), seed_n)
         
         # Build task list (flat)
         all_tasks = []
-        server_task_counts = {s: 0 for s in server_list}
         
-        for i, seed in enumerate(seed_array):
-            server = server_list[i % len(server_list)]
+        for seed in enumerate(seed_list):
             sim_copy = copy.deepcopy(sim)
-            
-            # use per-server local index for NUMA node selection
-            server_local_index = server_task_counts[server]
-            server_task_counts[server] += 1
-            
-            task = (sim_copy, seed, local_path, filename, server, node_id)
-            all_tasks.append((server, task))
+            sim_copy.SEED = seed
+            sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{seed:.2f}V"
+            filename  = filename+f"-s{seed:.2f}.in"
+            log_file = f'log-s{seed:.2f}.txt'
+            task = (
+                sim_copy,
+                local_path,
+                ssh_path,
+                filename,
+                log_file,
+            )
 
-        def _run_seed_with_semaphore(server, task_args):
-            """Acquire server semaphore, run task, release semaphore"""
-            sem = server_semaphores[server]
-            sem.acquire()
-            try:
-                seed_func(*task_args)
-            except Exception as e:
-                print(f"Error running seed task on {server}: {e}")
-            finally:
-                sem.release()
-
-        # Use a thread pool with total slots across all servers
-        total_slots = sum(server_slots.values())
-        print(f"Starting seed executor with {total_slots} max workers (total NUMA slots)")
-        
-        with ThreadPoolExecutor(max_workers=total_slots) as ex:
-            futures = [ex.submit(_run_seed_with_semaphore, server, task) for server, task in all_tasks]
-            for f in futures:
-                f.result()
+        all_tasks.append(task)
+            
+        # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
+        with ThreadPoolExecutor(max_workers=len(seed_list)) as ex:
+            results = list(ex.map(assign_job, all_tasks))
 
     if bias_run:
         # check simulation MC
         # build class
         sim, filename = build_simulation_template("MC", None)
-        sim_type = "BIAS"
         # configure default parameters
         simulation_dir = f"MC/{simulation_name}" # Simulation folder
         configure_simulation_defaults(sim, simulation_dir)
@@ -300,8 +221,8 @@ def main():
         bias_contact = "pcontact"
         ground_contact = "ncontact"
         # bias values
-        vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
-        # vdc_list = [1]  # from 0.5V to 2.0V with 5 points
+        # vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
+        vdc_list = [1] 
         ground = "0.0"
 
         # kind of potential
@@ -310,24 +231,25 @@ def main():
         all_tasks = []
 
         
-        for i, bias in enumerate(vdc_list):
+        for bias in enumerate(vdc_list):
             sim_copy = copy.deepcopy(sim)
             sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
             sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
             filename  = filename+f"-{bias:.2f}V.in"
+            log_file = f'log-{bias:.2f}.txt'
             task = (
                 sim_copy,
-                bias,
                 local_path,
                 ssh_path,
                 filename,
+                log_file,
             )
 
             all_tasks.append(task)
             
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
         with ThreadPoolExecutor(max_workers=len(vdc_list)) as ex:
-            results = list(ex.map(lambda task: assign_job(task, sim_type), all_tasks))
+            results = list(ex.map(assign_job, all_tasks))
 
     if vbd_run:
         # build class
@@ -358,29 +280,28 @@ def main():
         all_tasks = []
 
         
-        for i, bias in enumerate(vdc_list):
+        for bias in enumerate(vdc_list):
             sim_copy = copy.deepcopy(sim)
             sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias:.2f} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
-            # sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
             sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
             # initial condition for FF: load EField subhistory from previous MC sim
             sim_copy.INITIAL_CONDITIONS = "FF " + f"{load_dir}-{bias:.2f}V/ElectricField_{load_Efield_index}.txt"
             # simulation will be stored under FF directory
-            # sim_copy.SIMULATION = "FF/" + sim_copy.SIMULATION
             filename  = filename+f"-{bias:.2f}V.in"
+            log_file = f'log-{bias:.2f}.txt'
             task = (
                 sim_copy,
-                bias,
                 local_path,
                 ssh_path,
                 filename,
+                log_file,
             )
 
             all_tasks.append(task)
             
         # Launch all tasks; semaphores ensure each server runs at most N concurrent (N = its NUMA nodes)
-        with ThreadPoolExecutor(max_workers=21) as ex:
-            results = list(ex.map(lambda task: assign_job(task, sim_type), all_tasks))
+        with ThreadPoolExecutor(max_workers=len(vdc_list)) as ex:
+            results = list(ex.map(assign_job, all_tasks))
             
 
 
