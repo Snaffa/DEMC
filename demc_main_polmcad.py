@@ -63,7 +63,7 @@ SERVERS = {
     },
 }
 
-def assign_job(task,sim_type):
+def assign_job(task,sim_type,init_subhistory=None):
     while True:
         for host, s in SERVERS.items():
             if not s.get("enabled", True):
@@ -125,9 +125,9 @@ def seed_func(sim,seed,input_path,filename, server ,node_id,):
 
 def bias_func(task,server,node_id,log_file='log.txt'):
         (sim, bias_contact, bias, ground_contact, ground, bias_potential_type, ground_potential_type, local_path, ssh_path, filename) = task
-        sim.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
-        sim.SIMULATION = sim.SIMULATION + f"-{bias:.2f}V"
-        filename  = filename+f"-{bias:.2f}V.in"
+        # sim.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
+        # sim.SIMULATION = sim.SIMULATION + f"-{bias:.2f}V"
+        # filename  = filename+f"-{bias:.2f}V.in"
         write_path = os.path.join(local_path, filename)
         
         with open(write_path, "w") as f:
@@ -196,24 +196,24 @@ def configure_simulation_defaults(sim, simulation_dir: str) -> None:
 def main():
     base_dir = "/mnt/polmcad" # Base directory where server filesystem is mounted
     server_dir = "MonteCarlo/DEMC" # Folder containing device folders
-    device_dir = "prove" # Device folder
-    simulation_dir = f"try" # Simulation folder
+    device_dir = "SPAD_FBK_v2/3D" # Device folder
+    simulation_dir = f"MC/voltage_ramp" # Simulation folder
 
     threads = 10
     seed_run = False
-    bias_run = True
-    vbd_run = False
-    # build class
-    sim, filename = build_simulation_template("MC", None)
-
-    # configure default parameters
-    configure_simulation_defaults(sim, simulation_dir)
+    bias_run = False
+    vbd_run = True
 
     local_path = os.path.join(base_dir, server_dir, device_dir)
     ssh_path = os.path.join(server_dir, device_dir)
 
     if seed_run:
         sim_type = "SEED"
+        # build class
+        sim, filename = build_simulation_template("MC", None)
+        # configure default parameters
+        configure_simulation_defaults(sim, simulation_dir)
+
         seed_low = 0
         seed_high = 1000
         seed_n = 2
@@ -256,11 +256,11 @@ def main():
 
     if bias_run:
         # check simulation MC
-        if not(sim.INITIAL_CONDITIONS.startswith("MC")):
-            print("Bias run compatible only with MC simulations. Exiting bias run.")
-            return
+        # build class
+        sim, filename = build_simulation_template("MC", None)
         sim_type = "BIAS"
-
+        # configure default parameters
+        configure_simulation_defaults(sim, simulation_dir)
         # contacts name
         bias_contact = "pcontact"
         ground_contact = "ncontact"
@@ -277,6 +277,9 @@ def main():
         
         for i, bias in enumerate(vdc_list):
             sim_copy = copy.deepcopy(sim)
+            sim_copy.CONTACT_POTENTIAL = [f"{bias_contact} {bias} {bias_potential_type}", f"{ground_contact} {ground} {ground_potential_type}"] 
+            sim_copy.SIMULATION = sim_copy.SIMULATION + f"-{bias:.2f}V"
+            filename  = filename+f"-{bias:.2f}V.in"
             task = (
                 sim_copy,
                 bias_contact,
@@ -297,12 +300,12 @@ def main():
             results = list(ex.map(lambda task: assign_job(task, sim_type), all_tasks))
 
     if vbd_run:
-        # check simulation FF
-        if not(sim.INITIAL_CONDITIONS.startswith("FF")):
-            print("Vbd run compatible only with FF simulations. Exiting Vbd run.")
-            return
+        init_subhistory = "2"
+        # build class
+        sim, filename = build_simulation_template("FF", None)
         sim_type = "VBD"
-        
+        # configure default parameters
+        configure_simulation_defaults(sim, simulation_dir)
         # contacts name
         bias_contact = "pcontact"
         ground_contact = "ncontact"
@@ -319,6 +322,7 @@ def main():
         
         for i, bias in enumerate(vdc_list):
             sim_copy = copy.deepcopy(sim)
+            # sim
             task = (
                 sim_copy,
                 bias_contact,
@@ -330,6 +334,7 @@ def main():
                 local_path,
                 ssh_path,
                 filename,
+                init_subhistory,
             )
 
             all_tasks.append(task)
