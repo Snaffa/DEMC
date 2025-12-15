@@ -13,8 +13,8 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 SERVERS = {
     'ebncsm2': {
-        "sem": Semaphore(4),
-        "enabled": False,
+        "sem": Semaphore(2),
+        "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
@@ -22,7 +22,7 @@ SERVERS = {
     },
 
     'ebncsm3': {
-        "sem": Semaphore(4),
+        "sem": Semaphore(2),
         "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
@@ -31,8 +31,8 @@ SERVERS = {
     },
     
     'ebncsm4': {
-        "sem": Semaphore(4),
-        "enabled": False,
+        "sem": Semaphore(2),
+        "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
@@ -40,13 +40,104 @@ SERVERS = {
     },
     
     'ebncsm5': {
-        "sem": Semaphore(4),
+        "sem": Semaphore(2),
         "enabled": False,
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
         }
     },
+    
+    'ebncsm6': {
+        "sem": Semaphore(2),
+        "enabled": False,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm7': {
+        "sem": Semaphore(2),
+        "enabled": False,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm8': {
+        "sem": Semaphore(2),
+        "enabled": False,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm9': {
+        "sem": Semaphore(2),
+        "enabled": True,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm10': {
+        "sem": Semaphore(2),
+        "enabled": True,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm11': {
+        "sem": Semaphore(2),
+        "enabled": True,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm12': {
+        "sem": Semaphore(2),
+        "enabled": True,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm13': {
+        "sem": Semaphore(2),
+        "enabled": True,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm14': {
+        "sem": Semaphore(2),
+        "enabled": True,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm15': {
+        "sem": Semaphore(2),
+        "enabled": True,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+
 
 }
 
@@ -143,20 +234,20 @@ def build_simulation_template(sim_type: str, txt: str | None) -> tuple[object, s
 
 def configure_simulation_defaults(sim, simulation_dir: str) -> None:
     sim.SIMULATION = simulation_dir
-    sim.THREADS = 10
-    sim.MESH = "si1e17_epi1e13_di5e16"
+    sim.THREADS = 20
+    sim.MESH = "si5e17_epi5e13_diexp_1e17"
     sim.MATERIAL_INPUT = "Material_fb.in"
     sim.DIMENSIONS = 3
     sim.LENGTH_UNIT = 1.0e-6
     sim.SUPERCHARGE = [-1.0, -1.0]
-    sim.TIMER = [10e-12, "CONSTANT", 1e-15]
-    sim.ELECTRON = 1000
-    sim.HOLE = 1000
+    sim.TIMER = [1e-10, "CONSTANT", 1e-14]
+    sim.ELECTRON = 1000000
+    sim.HOLE = 1000000
     sim.POISSON = ["EVENTS", 2]
     sim.RAMO = ["EVENTS", 8]
     sim.SUBHISTORY_FORMAT = "VTKANDTEXT"
-    sim.SUBHISTORY = ["PERIOD",0, 1e-15]
-    sim.CONTACT_POTENTIAL = ["ncontact 0.0 NATIVE", "pcontact -15.0 NATIVE"]
+    sim.SUBHISTORY = ["TOTAL", 2]
+    sim.CONTACT_POTENTIAL = ["ncontact 0.0 NATIVE", "pcontact 0.0 NATIVE"]
     sim.SEED = 111
     sim.TUNNELING = 0
     sim.SELFFORCES = 0
@@ -166,7 +257,7 @@ def get_max_concurrent_tasks():
     return sum(len(s["numa_nodes"]) for s in SERVERS.values() if s.get("enabled", True))
 
 def main():
-    base_dir = "/mnt/polmcad" # Base directory where server filesystem is mounted
+    base_dir = "/mnt/csmhome2/amudano" # Base directory where server filesystem is mounted
     server_dir = "MonteCarlo/DEMC" # Folder containing device folders
     device_dir = "SPAD_FBK_v2/quasi_1D" # Device folder
 
@@ -179,7 +270,7 @@ def main():
     vbd_run = True
 
     local_path = os.path.join(base_dir, server_dir, device_dir)
-    ssh_path = os.path.join(server_dir, device_dir)
+    ssh_path = os.path.join("work",server_dir, device_dir)
 
     if seed_run:
         simulation_name = "breakdown--15.00V" # Name of the simulation
@@ -228,7 +319,7 @@ def main():
         ground_contact = "ncontact"
         # bias values
         # vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
-        vdc_list = [-21]  # from 0.5V to 2.0V with 5 points
+        vdc_list = [-40,-41,-41,-43,-44]  # from 0.5V to 2.0V with 5 points
         ground = "0.0"
 
         # kind of potential
@@ -274,8 +365,8 @@ def main():
         bias_contact = "pcontact"
         ground_contact = "ncontact"
         # bias values
-        vdc_list = [-35,-10]  # from 0.5V to 2.0V with 5 points
-        # vdc_list = np.linspace(-35, -10, 26).tolist()  # from 0.5V to 2.0V with 5 points
+        # vdc_list = [-35,-10]  # from 0.5V to 2.0V with 5 points
+        vdc_list = np.linspace(-45, -40, 6).tolist()  # from 0.5V to 2.0V with 5 points
         ground = "0.0"
 
         # kind of potential
@@ -289,7 +380,7 @@ def main():
             # configure default parameters
             configure_simulation_defaults(sim, simulation_dir)
             # change dt to be able to catch impact ionization
-            sim.TIMER = [10e-12, "CONSTANT", 1e-15]
+            sim.TIMER = [100e-12, "CONSTANT", 1e-15]
             # fix number of particles since we are simulating breakdown
             sim.ELECTRON = 100000
             sim.HOLE = 100000
