@@ -18,8 +18,6 @@ SERVERS = {
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
-            2 : Semaphore(1),
-            3 : Semaphore(1),
         }
     },
     'polmcad1': {
