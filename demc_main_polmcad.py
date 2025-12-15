@@ -12,7 +12,7 @@ from threading import Semaphore
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 SERVERS = {
-    'polmcad0': {
+    'ebncsm2': {
         "sem": Semaphore(4),
         "enabled": False,
         "numa_nodes": {
@@ -20,45 +20,34 @@ SERVERS = {
             1 : Semaphore(1),
         }
     },
-    'polmcad1': {
-        "sem": Semaphore(2),
-        "enabled": True,
-        "numa_nodes": {
-            0 : Semaphore(0),
-            1 : Semaphore(1),
-        }
-    },
-    'polmcad2': {
-        "sem": Semaphore(1),
-        "enabled": True,
-        "numa_nodes": {
-            0 : Semaphore(1),
-        }
-    },
-    'polmcad6': {
-        "sem": Semaphore(1),
-        "enabled": True,
-        "numa_nodes": {
-            0 : Semaphore(1),
-        }
-    },
-    'polmcad7': {
-        "sem": Semaphore(1),
-        "enabled": True,
-        "numa_nodes": {
-            0 : Semaphore(1),
-        }
-    },
-    'polmcad8': {
+
+    'ebncsm3': {
         "sem": Semaphore(4),
         "enabled": True,
         "numa_nodes": {
             0 : Semaphore(1),
             1 : Semaphore(1),
-            2 : Semaphore(1),
-            3 : Semaphore(1),
         }
     },
+    
+    'ebncsm4': {
+        "sem": Semaphore(4),
+        "enabled": False,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+    
+    'ebncsm5': {
+        "sem": Semaphore(4),
+        "enabled": False,
+        "numa_nodes": {
+            0 : Semaphore(1),
+            1 : Semaphore(1),
+        }
+    },
+
 }
 
 def assign_job(task):
