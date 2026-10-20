@@ -1,20 +1,22 @@
-class DEMC_MC_input:
-    def __init__(self):
+class DEMCInput:
+    """Fields common to every DEMC input file. Attribute order is the line order in the file."""
+
+    def __init__(self, initial_conditions: str):
         self.SIMULATION = ""
         self.THREADS = 0
-        self.INITIAL_CONDITIONS = "MC"
+        self.INITIAL_CONDITIONS = initial_conditions
         self.MESH = ""
         self.MATERIAL_INPUT = ""
         self.DIMENSIONS = 0
         self.LENGTH_UNIT = 0.0
         self.SUPERCHARGE = []
-        self.TIMER = {}
+        self.TIMER = []
         self.ELECTRON = 0
         self.HOLE = 0
-        self.POISSON = {}
-        self.RAMO = {}
+        self.POISSON = []
+        self.RAMO = []
         self.SUBHISTORY_FORMAT = ""
-        self.SUBHISTORY = {}
+        self.SUBHISTORY = []
         self.CONTACT_POTENTIAL = []
         self.SEED = 0
         self.TUNNELING = 0
@@ -23,104 +25,33 @@ class DEMC_MC_input:
 
     def __str__(self):
         lines = []
-        for k, v in self.__dict__.items():
-            if isinstance(v, str) and v == "":
+        for key, value in self.__dict__.items():
+            # unset fields are omitted
+            if isinstance(value, (str, list)) and not value:
                 continue
-            if k.upper() == "CONTACT_POTENTIAL" and isinstance(v, list) and v:
-                for item in v:
-                    lines.append(f"CONTACT_POTENTIAL\t{item}")
-                continue
-            if isinstance(v, list) and v:
-                lines.append(f"{k.upper()}\t{' '.join(str(x) for x in v)}")
-                continue
-            if isinstance(v, dict) and v:
-                dict_str = ' '.join(f"{dk} {dv}" for dk, dv in v.items())
-                lines.append(f"{k.upper()}\t{dict_str}")
-                continue
-            lines.append(f"{k.upper()}\t{v}")
+            if key == "CONTACT_POTENTIAL":
+                # one line per contact
+                lines += [f"CONTACT_POTENTIAL\t{item}" for item in value]
+            elif isinstance(value, list):
+                lines.append(f"{key}\t{' '.join(str(x) for x in value)}")
+            else:
+                lines.append(f"{key}\t{value}")
         return "\n".join(lines)
 
-class DEMC_CONTINUE_input:
+
+class DEMC_MC_input(DEMCInput):
     def __init__(self):
-        self.SIMULATION = ""
-        self.THREADS = 0
-        self.INITIAL_CONDITIONS = ["CONTINUE", ""]
-        self.MESH = ""
-        self.MATERIAL_INPUT = ""
-        self.DIMENSIONS = 0
-        self.LENGTH_UNIT = 0.0
-        self.SUPERCHARGE = []
-        self.TIMER = {}
-        self.ELECTRON = 0
-        self.HOLE = 0
-        self.POISSON = {}
-        self.RAMO = {}
-        self.SUBHISTORY_FORMAT = ""
-        self.SUBHISTORY = {}
-        self.CONTACT_POTENTIAL = []
-        self.SEED = 0
-        self.TUNNELING = 0
-        self.IIOFFSPRING = 0
-        self.SELFFORCES = 0
+        super().__init__("MC")
+
+
+class DEMC_CONTINUE_input(DEMCInput):
+    def __init__(self):
+        super().__init__("CONTINUE")
         self.GENERATION_FILE = ""
         self.RLC_FILE = ""
-    def __str__(self):
-        lines = []
-        for k, v in self.__dict__.items():
-            if isinstance(v, str) and v == "":
-                continue
-            if k.upper() == "CONTACT_POTENTIAL" and isinstance(v, list) and v:
-                for item in v:
-                    lines.append(f"CONTACT_POTENTIAL\t{item}")
-                continue
-            if isinstance(v, list) and v:
-                lines.append(f"{k.upper()}\t{' '.join(str(x) for x in v)}")
-                continue
-            if isinstance(v, dict) and v:
-                dict_str = ' '.join(f"{dk} {dv}" for dk, dv in v.items())
-                lines.append(f"{k.upper()}\t{dict_str}")
-                continue
-            lines.append(f"{k.upper()}\t{v}")
-        return "\n".join(lines)
 
-class DEMC_FF_input:
+
+class DEMC_FF_input(DEMCInput):
     def __init__(self):
-        self.SIMULATION = ""
-        self.THREADS = 0
-        self.INITIAL_CONDITIONS = ["FF", ""]
-        self.MESH = ""
-        self.MATERIAL_INPUT = ""
-        self.DIMENSIONS = 0
-        self.LENGTH_UNIT = 0.0
-        self.SUPERCHARGE = []
-        self.TIMER = {}
-        self.ELECTRON = 0
-        self.HOLE = 0
-        self.POISSON = {}
-        self.RAMO = {}
-        self.SUBHISTORY_FORMAT = ""
-        self.SUBHISTORY = {}
-        self.CONTACT_POTENTIAL = []
-        self.SEED = 0
-        self.TUNNELING = 0
-        self.IIOFFSPRING = 0
-        self.SELFFORCES = 0
+        super().__init__("FF")
         self.GENERATION_FILE = ""
-    def __str__(self):
-        lines = []
-        for k, v in self.__dict__.items():
-            if isinstance(v, str) and v == "":
-                continue
-            if k.upper() == "CONTACT_POTENTIAL" and isinstance(v, list) and v:
-                for item in v:
-                    lines.append(f"CONTACT_POTENTIAL\t{item}")
-                continue
-            if isinstance(v, list) and v:
-                lines.append(f"{k.upper()}\t{' '.join(str(x) for x in v)}")
-                continue
-            if isinstance(v, dict) and v:
-                dict_str = ' '.join(f"{dk} {dv}" for dk, dv in v.items())
-                lines.append(f"{k.upper()}\t{dict_str}")
-                continue
-            lines.append(f"{k.upper()}\t{v}")
-        return "\n".join(lines)
